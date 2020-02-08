@@ -29,14 +29,12 @@ struct Node
     split::Union{Split,Nothing}
     children::Union{Tuple{Node,Node},Nothing}
     samples::Union{Array{Sample},Nothing}
-    forest::Forest
 end
 
 Node(forest) = Node(nothing,nothing,nothing,forest)
 Node(forest,samples::Array{Sample}) = Node(nothing,nothing,samples)
 
 struct Tree
-    forest::Forest
     root::Node
 end
 

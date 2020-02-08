@@ -9,6 +9,7 @@ mutable struct Element
         e = new()
         e.value = nothing
         e.key = nothing
+        e
     end
 end
 
@@ -25,6 +26,7 @@ function endcaps()::Tuple{Element,Element}
     endcap_left.next = endcap_right
     endcap_right.next = endcap_right
     endcap_right.previous = endcap_left
+    (endcap_left,endcap_right)
 end
 
 function Element(k,v,p::Element,n::Element)::Element
@@ -61,7 +63,7 @@ end
 
 function Segment(kv)
     segment = Segment()
-    for (key,value) in enumerate(kv)
+    for (key,value) in kv
         push_right!(segment,key,value)
     end
     segment
@@ -69,7 +71,7 @@ end
 
 
 function length(segment::Segment)
-    length(segment.arena)
+    Base.length(segment.arena)
 end
 
 function pop!(segment::Segment,key)
@@ -115,7 +117,7 @@ end
 function push_right!(segment::Segment,element::Element)
     right = segment.right
     left = right.previous
-    segment.arena[elment.key] = element
+    segment.arena[element.key] = element
     element.previous = left
     element.next = right
     left.next = element
@@ -134,7 +136,7 @@ end
 function read_ordered(segment::Segment)::Array
     element = segment.left
     output =
-        (1:length(segment.arena)) .|>
+        (1:length(segment)) .|>
         (x) -> (element = element.next;
         element.value)
     output
@@ -143,28 +145,39 @@ end
 
 
 mutable struct MedianVector
-    segments::(Segment,Segment,Segment)
-    sums::(Any,Any)
+    segments::Tuple{Segment,Segment,Segment}
+    sums::Array{Any}
 end
 
 function MedianVector(kv)
-    sorted = sort(kv,by=(_,v) -> v)
-    split = round((length(sorted)/2),RoundingMode{RoundDown})
+    sorted = sort(kv,by= (x) -> x[2])
+    split = round(Int,((Base.length(sorted)-1)/2),RoundDown)
+    println(sorted)
+    println(split)
     seg_1 = Segment(sorted[1:split])
-    seg_2 = Segment(sorted[split:end-split])
+    seg_2 = Segment(sorted[split+1:(end-split-1)])
     seg_3 = Segment(sorted[end-split:end])
-
+    println(read_ordered((seg_1)))
+    println(read_ordered((seg_2)))
+    println(read_ordered((seg_3)))
+    sum_1 = sum(read_ordered(seg_1))
+    sum_2 = sum(read_ordered(seg_3))
+    MedianVector(
+        (seg_1,seg_2,seg_3),
+        [sum_1,sum_2]
+    )
+    balance!(MedianVector())
 end
 
 function shift_right!(vector::MedianVector)
     if length(vector.segments[2]) == 1
         element = pop_left!(vector.segments[3])
         push_right!(vector.segments[2],element)
-        vector.sums[1] += vector.segments[2].left.value
+        vector.sums[1] += vector.segments[2].left.next.value
     elseif length(vector.segments[2]) == 2
         element = pop_left!(vector.segments[2])
         vector.sums[1] += element.value
-        vector.sums[2] -= vector.segments[2].right.value
+        vector.sums[2] -= vector.segments[2].right.previous.value
         push_right!(vector.segments[1],element)
     end
 end
@@ -173,40 +186,45 @@ function shift_left!(vector::MedianVector)
     if length(vector.segments[2]) == 1
         element = pop_right!(vector.segments[1])
         push_left!(vector.segments[2],element)
-        vector.sums[2] += vector.segments[2].right.value
+        vector.sums[2] += vector.segments[2].right.previous.value
     elseif length(vector.segments[2]) == 2
         element = pop_right!(vector.segments[2])
         vector.sums[2] += element.value
-        vector.sums[1] -= vector.segments[2].left.value
+        vector.sums[1] -= vector.segments[2].left.next.value
         push_right!(vector.segments[3],element)
     end
 end
 
-function median(vector::MedianVector):
+function median(vector::MedianVector)
     sum(read_ordered(vector.segments[2])) / max(length(vector.segments[2]),1)
 end
 
 #### TO DO: INTEGRITY TEST/ASSERT
 
 function balance!(vector::MedianVector)
-    while length(vector.segments[1]) != length(vector.segments[3]):
+    while length(vector.segments[1]) != length(vector.segments[3])
+        println("Balancing")
+        println(length(vector.segments[1]))
+        println(length(vector.segments[2]))
+        println(length(vector.segments[3]))
         if length(vector.segments[1]) > length(vector.segments[3])
             shift_left!(vector)
         elseif length(vector.segments[1]) < length(vector.segments[3])
-            shift_right(vector)
+            shift_right!(vector)
         end
+    end
 end
 
 
 
 mutable struct MADVector
-    segments::(Segment,Segment,Segment,Segment)
-    sums::(Any,Any,Any,Any)
+    segments::Tuple{Segment,Segment,Segment,Segment}
+    sums::Array{Any}
 end
 
 mutable struct EntropyVector
     segments::Array{Segment}
-    sums::Array{Segment}
+    sums::Array{Any}
 end
 
 end

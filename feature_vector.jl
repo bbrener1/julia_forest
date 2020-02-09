@@ -1,6 +1,6 @@
 module FeatureVector
 
-using Statistics
+using Statistics,Random
 
 mutable struct Element
     key::Union{Any,Nothing}
@@ -69,6 +69,15 @@ function link_sorted(sorted)
 
 end
 
+function link_elements(elements)
+    segment = Segment()
+    for element::Element in sorted
+        push_right!(segment,element)
+    end
+    segment
+
+end
+
 function Segment(kv)
     segment = Segment()
     for (key,value) in kv
@@ -99,7 +108,7 @@ function pop_left!(segment::Segment)
 end
 
 function pop_right!(segment::Segment)
-    target_key = segment.left.next.key
+    target_key = segment.right.previous.key
     pop!(segment,target_key)
 end
 
@@ -109,7 +118,7 @@ function push_left!(segment::Segment,element::Element)
     right = left.next
     segment.arena[element.key] = element
     segment.sum += element.value
-    segment.squared_sum += element.value
+    segment.squared_sum += element.squared_value
     element.previous = left
     element.next = right
     left.next = element
@@ -122,7 +131,7 @@ function push_left!(segment::Segment,key,value)
     element = Element(key,value,left,right)
     segment.arena[key] = element
     segment.sum += element.value
-    segment.squared_sum += element.value
+    segment.squared_sum += element.squared_value
     left.next = element
     right.previous = element
 end
@@ -133,7 +142,7 @@ function push_right!(segment::Segment,element::Element)
     left = right.previous
     segment.arena[element.key] = element
     segment.sum += element.value
-    segment.squared_sum += element.value
+    segment.squared_sum += element.squared_value
     element.previous = left
     element.next = right
     left.next = element
@@ -146,7 +155,7 @@ function push_right!(segment::Segment,key,value)
     element = Element(key,value,left,right)
     segment.arena[key] = element
     segment.sum += element.value
-    segment.squared_sum += element.value
+    segment.squared_sum += element.squared_value
     left.next = element
     right.previous = element
 end
@@ -201,9 +210,11 @@ end
 function shift_right!(vector::MedianVector)
     if length(vector.segments[2]) == 1
         element = pop_left!(vector.segments[3])
+        println("Shifting element right:$(element.value)")
         push_right!(vector.segments[2],element)
     elseif length(vector.segments[2]) == 2
         element = pop_left!(vector.segments[2])
+        println("Shifting element right:$(element.value)")
         push_right!(vector.segments[1],element)
     end
 end
@@ -211,9 +222,11 @@ end
 function shift_left!(vector::MedianVector)
     if length(vector.segments[2]) == 1
         element = pop_right!(vector.segments[1])
+        println("Shifting element left:$(element.value)")
         push_left!(vector.segments[2],element)
     elseif length(vector.segments[2]) == 2
         element = pop_right!(vector.segments[2])
+        println("Shifting element left:$(element.value)")
         push_right!(vector.segments[3],element)
     end
 end
@@ -222,60 +235,63 @@ function median(vector::MedianVector)
     vector.segments[2].sum / max(length(vector.segments[2]),1)
 end
 
+function read_ordered(vector::MedianVector)
+    vcat((vector.segments .|> read_ordered)...)
+end
+
 function sme(vector::MedianVector)
-    median = median(vector)
+    md = median(vector)
     left_sum = vector.segments[1].sum
-    left_elements = legnth(vector.segments[1])
+    left_elements = length(vector.segments[1])
     right_sum = vector.segments[3].sum
-    right_elements = legnth(vector.segments[1])
+    right_elements = length(vector.segments[1])
     if length(vector.segments[2]) == 2
         left_sum += vector.segments[2].left.next.value
         left_elements += 1
-        right_sum += vector.segmenets[2].right.previous.squared_value
+        right_sum += vector.segments[2].right.previous.squared_value
         right_elements += 1
     end
 
-    return abs((left_elements * median) - left_sum) + abs(right_sum - (right_elements*median))
+    return abs((left_elements * md) - left_sum) + abs(right_sum - (right_elements*md))
 
 
 end
 
 function ssme(vector::MedianVector)
-    median = median(vector)
+    md = median(vector)
     squared_sum = vector.segments[1].squared_sum + vector.segments[3].squared_sum
     sum = vector.segments[1].sum + vector.segments[3].sum
-    elements = legnth(vector.segments[1]) + legnth(vector.segments[1])
+    elements = length(vector.segments[1]) + length(vector.segments[1])
     if length(vector.segments[2]) == 2
         squared_sum += vector.segments[2].squared_sum
         sum += vector.segments[2].sum
         elements += 2
     end
-    return squared_sum + (2*median*sum) + (elements*median)
+    return squared_sum - (2*md*sum) + (elements*(md^2))
 end
 
-
-#### TO DO: INTEGRITY TEST/ASSERT
+# function integrity_test(MedianVector)
 
 function balance!(vector::MedianVector)
     ll = length(vector.segments[1])
     lr = length(vector.segments[3])
     lm = length(vector.segments[2])
+    if lm < 1
+        if ll > lr
+            element = pop_right!(vector.segments[1])
+            push_left!(vector.segments[2],element)
+        elseif lr > ll
+            element = pop_left!(vector.segments[3])
+            push_right!(vector.segments[2],element)
+        end
+    elseif lm > 2
+        throw(DomainError("median zone too large"))
+    end
     while ll != lr
         ll = length(vector.segments[1])
         lr = length(vector.segments[3])
         lm = length(vector.segments[2])
         println("Balancing")
-        if lm < 1
-            if ll > lr
-                element = pop_right!(vector.segments[1])
-                push_left!(vector.segments[2],element)
-            elseif lr > ll
-                element = pop_left!(vector.segments[3])
-                push_right!(vector.segments[2],element)
-            end
-        elseif lm > 2
-            throw(DomainError("median zone too large"))
-        end
         if ll > lr
             shift_left!(vector)
         elseif ll < lr
@@ -284,19 +300,64 @@ function balance!(vector::MedianVector)
     end
 end
 
-function RandomMedianTest()
+function RandomMedianTest(kv)
+    vec = MedianVector(kv)
+    draw_order = Random.randperm(Base.length(kv))
+
+    vec_copy = deepcopy(vec)
+    for i in draw_order
+        println(i)
+        println(vec_copy.segments .|> length)
+        println(vec_copy.segments .|> (x)->x.sum)
+        println(vec_copy.segments .|> (x)->x.squared_sum)
+        fss = ssme(vec_copy)
+        sss = slow_ssme(read_ordered(vec_copy))
+        fs = sme(vec_copy)
+        ss = slow_sme(read_ordered(vec_copy))
+        println("$fss,$sss")
+        if fss - sss > .00001
+            println(i)
+            println(vec_copy.segments .|> length)
+            println(vec_copy.segments .|> (x)->x.sum)
+            println(vec_copy.segments .|> (x)->x.squared_sum)
+            println("ERROR")
+            print("$fss,$sss")
+            return vec_copy
+        end
+        if fs - ss > .00001
+            println(i)
+            error("$fs,$ss")
+        end
+        pop!(vec_copy,i)
+    end
+end
+
+Base.show(io::IO,mv::MedianVector) = (_) -> ()
+
+function RandomMedianTiming(kv)
+    vec = MedianVector(kv)
+    draw_order = Random.randperm(length(vec))
+
+    @time for _ in 1:100
+        vec_copy = deepcopy(vec)
+        for i in draw_order
+            pop!(vec,i)
+            ssme(vec)
+        end
+    end
 end
 
 function slow_ssme(vec)
+    vec = Array{Float64}(vec)
     median = Statistics.median(vec)
-    differences = vec - median
-    sum(differences^2)
+    differences = vec .- median
+    sum(differences.^2)
 end
 
 function slow_sme(vec)
     median = Statistics.median(vec)
-    differences = vec - median
-    sum(abs(differences))
+    differences = vec .- median
+    differences .|> abs |> sum
 end
 
 mutable struct MADVector

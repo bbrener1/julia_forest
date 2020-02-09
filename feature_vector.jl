@@ -3,11 +3,13 @@ module FeatureVector
 mutable struct Element
     key::Union{Any,Nothing}
     value::Union{Any,Nothing}
+    squared_value::Union{Any,Nothing}
     previous::Element
     next::Element
     function Element()::Element
         e = new()
         e.value = nothing
+        e.squared_value = nothing
         e.key = nothing
         e
     end
@@ -16,6 +18,7 @@ end
 function Element(v)
     e = Element()
     e.value = v
+    e.squared_value = v^2
     e.key = nothing
 end
 
@@ -33,6 +36,7 @@ function Element(k,v,p::Element,n::Element)::Element
     e = Element()
     e.key = k
     e.value = v
+    e.squared_value = v^2
     e.previous = p
     e.next = n
     e
@@ -40,13 +44,15 @@ end
 
 mutable struct Segment
     arena::Dict{Any,Element}
+    sum::Any
+    squared_sum::Any
     left::Element
     right::Element
 end
 
 function Segment()::Segment
     (endcap_left,endcap_right) = endcaps()
-    Segment(Dict([]),endcap_left,endcap_right)
+    Segment(Dict([]),0,0,endcap_left,endcap_right)
 end
 
 function link_sorted(sorted)
@@ -76,6 +82,8 @@ end
 
 function pop!(segment::Segment,key)
     target = Base.pop!(segment.arena,key)
+    segment.sum -= target.value
+    segment.squared_sum -= target.squared_value
     left = target.previous
     right = target.next
     left.next = right
@@ -98,6 +106,8 @@ function push_left!(segment::Segment,element::Element)
     left = segment.left
     right = left.next
     segment.arena[element.key] = element
+    segment.sum += element.value
+    segment.squared_sum += element.value
     element.previous = left
     element.next = right
     left.next = element
@@ -109,6 +119,8 @@ function push_left!(segment::Segment,key,value)
     right = left.next
     element = Element(key,value,left,right)
     segment.arena[key] = element
+    segment.sum += element.value
+    segment.squared_sum += element.value
     left.next = element
     right.previous = element
 end
@@ -118,6 +130,8 @@ function push_right!(segment::Segment,element::Element)
     right = segment.right
     left = right.previous
     segment.arena[element.key] = element
+    segment.sum += element.value
+    segment.squared_sum += element.value
     element.previous = left
     element.next = right
     left.next = element
@@ -129,6 +143,8 @@ function push_right!(segment::Segment,key,value)
     left = right.previous
     element = Element(key,value,left,right)
     segment.arena[key] = element
+    segment.sum += element.value
+    segment.squared_sum += element.value
     left.next = element
     right.previous = element
 end
@@ -146,7 +162,6 @@ end
 
 mutable struct MedianVector
     segments::Tuple{Segment,Segment,Segment}
-    sums::Array{Any}
 end
 
 function MedianVector(kv)
@@ -160,24 +175,19 @@ function MedianVector(kv)
     println(read_ordered((seg_1)))
     println(read_ordered((seg_2)))
     println(read_ordered((seg_3)))
-    sum_1 = sum(read_ordered(seg_1))
-    sum_2 = sum(read_ordered(seg_3))
-    MedianVector(
+    mv = MedianVector(
         (seg_1,seg_2,seg_3),
-        [sum_1,sum_2]
     )
-    balance!(MedianVector())
+    balance!(mv)
+    mv
 end
 
 function shift_right!(vector::MedianVector)
     if length(vector.segments[2]) == 1
         element = pop_left!(vector.segments[3])
         push_right!(vector.segments[2],element)
-        vector.sums[1] += vector.segments[2].left.next.value
     elseif length(vector.segments[2]) == 2
         element = pop_left!(vector.segments[2])
-        vector.sums[1] += element.value
-        vector.sums[2] -= vector.segments[2].right.previous.value
         push_right!(vector.segments[1],element)
     end
 end
@@ -186,11 +196,8 @@ function shift_left!(vector::MedianVector)
     if length(vector.segments[2]) == 1
         element = pop_right!(vector.segments[1])
         push_left!(vector.segments[2],element)
-        vector.sums[2] += vector.segments[2].right.previous.value
     elseif length(vector.segments[2]) == 2
         element = pop_right!(vector.segments[2])
-        vector.sums[2] += element.value
-        vector.sums[1] -= vector.segments[2].left.next.value
         push_right!(vector.segments[3],element)
     end
 end
@@ -202,29 +209,52 @@ end
 #### TO DO: INTEGRITY TEST/ASSERT
 
 function balance!(vector::MedianVector)
-    while length(vector.segments[1]) != length(vector.segments[3])
+    ll = length(vector.segments[1])
+    lr = length(vector.segments[3])
+    lm = length(vector.segments[2])
+    while ll != lr
+        ll = length(vector.segments[1])
+        lr = length(vector.segments[3])
+        lm = length(vector.segments[2])
         println("Balancing")
-        println(length(vector.segments[1]))
-        println(length(vector.segments[2]))
-        println(length(vector.segments[3]))
-        if length(vector.segments[1]) > length(vector.segments[3])
+        if lm < 1
+            if ll > lr
+                element = pop_right!(vector.segments[1])
+                push_left!(vector.segments[2],element)
+            elseif lr > ll
+                element = pop_left!(vector.segments[3])
+                push_right!(vector.segments[2],element)
+            end
+        elseif lm > 2
+            throw(DomainError("median zone too large"))
+        end
+        if ll > lr
             shift_left!(vector)
-        elseif length(vector.segments[1]) < length(vector.segments[3])
+        elseif ll < lr
             shift_right!(vector)
         end
     end
+end
+
+function pop!(vector::MedianVector,key)
+    for segment in vector.segments
+        if haskey(segment.arena,key)
+            pop!(segment,key)
+            balance!(vector)
+            return
+        end
+    end
+    throw(KeyError(key))
 end
 
 
 
 mutable struct MADVector
     segments::Tuple{Segment,Segment,Segment,Segment}
-    sums::Array{Any}
 end
 
 mutable struct EntropyVector
     segments::Array{Segment}
-    sums::Array{Any}
 end
 
 end

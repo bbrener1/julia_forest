@@ -1,5 +1,7 @@
 module FeatureVector
 
+using Statistics
+
 mutable struct Element
     key::Union{Any,Nothing}
     value::Union{Any,Nothing}
@@ -217,10 +219,40 @@ function shift_left!(vector::MedianVector)
 end
 
 function median(vector::MedianVector)
-    sum = 0
-    read_ordered(vector.segments[2]) .|> (x) -> sum += x
-    sum / max(length(vector.segments[2]),1)
+    vector.segments[2].sum / max(length(vector.segments[2]),1)
 end
+
+function sme(vector::MedianVector)
+    median = median(vector)
+    left_sum = vector.segments[1].sum
+    left_elements = legnth(vector.segments[1])
+    right_sum = vector.segments[3].sum
+    right_elements = legnth(vector.segments[1])
+    if length(vector.segments[2]) == 2
+        left_sum += vector.segments[2].left.next.value
+        left_elements += 1
+        right_sum += vector.segmenets[2].right.previous.squared_value
+        right_elements += 1
+    end
+
+    return abs((left_elements * median) - left_sum) + abs(right_sum - (right_elements*median))
+
+
+end
+
+function ssme(vector::MedianVector)
+    median = median(vector)
+    squared_sum = vector.segments[1].squared_sum + vector.segments[3].squared_sum
+    sum = vector.segments[1].sum + vector.segments[3].sum
+    elements = legnth(vector.segments[1]) + legnth(vector.segments[1])
+    if length(vector.segments[2]) == 2
+        squared_sum += vector.segments[2].squared_sum
+        sum += vector.segments[2].sum
+        elements += 2
+    end
+    return squared_sum + (2*median*sum) + (elements*median)
+end
+
 
 #### TO DO: INTEGRITY TEST/ASSERT
 
@@ -252,7 +284,20 @@ function balance!(vector::MedianVector)
     end
 end
 
+function RandomMedianTest()
+end
 
+function slow_ssme(vec)
+    median = Statistics.median(vec)
+    differences = vec - median
+    sum(differences^2)
+end
+
+function slow_sme(vec)
+    median = Statistics.median(vec)
+    differences = vec - median
+    sum(abs(differences))
+end
 
 mutable struct MADVector
     segments::Tuple{Segment,Segment,Segment,Segment}
@@ -261,5 +306,6 @@ end
 mutable struct EntropyVector
     segments::Array{Segment}
 end
+
 
 end

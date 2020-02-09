@@ -110,4 +110,8 @@ function trial_input()
     (1:100) |> Array |> (x) -> reshape(x,(50,2))
 end
 
+function random_trial_input()
+    collect(zip((1:1000),rand(1000)))
+end
+
 end

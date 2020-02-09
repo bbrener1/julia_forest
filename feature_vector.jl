@@ -159,19 +159,33 @@ function read_ordered(segment::Segment)::Array
 
 end
 
+abstract type SegmentedVector end
 
-mutable struct MedianVector
+function pop!(vector::SegmentedVector,key)
+    for segment in vector.segments
+        if haskey(segment.arena,key)
+            pop!(segment,key)
+            balance!(vector)
+            return
+        end
+    end
+    throw(KeyError(key))
+end
+
+
+mutable struct MedianVector <: SegmentedVector
     segments::Tuple{Segment,Segment,Segment}
 end
 
 function MedianVector(kv)
     sorted = sort(kv,by= (x) -> x[2])
-    split = round(Int,((Base.length(sorted)-1)/2),RoundDown)
+    split_l = round(Int,((Base.length(sorted)+1)/2),RoundDown)
+    split_r = round(Int,((Base.length(sorted)+1)/2),RoundUp)
     println(sorted)
-    println(split)
-    seg_1 = Segment(sorted[1:split])
-    seg_2 = Segment(sorted[split+1:(end-split-1)])
-    seg_3 = Segment(sorted[end-split:end])
+    println(split_l,split_r)
+    seg_1 = Segment(sorted[1:(split_l-1)])
+    seg_2 = Segment(sorted[split_l:split_r])
+    seg_3 = Segment(sorted[split_r+1:end])
     println(read_ordered((seg_1)))
     println(read_ordered((seg_2)))
     println(read_ordered((seg_3)))
@@ -203,7 +217,9 @@ function shift_left!(vector::MedianVector)
 end
 
 function median(vector::MedianVector)
-    sum(read_ordered(vector.segments[2])) / max(length(vector.segments[2]),1)
+    sum = 0
+    read_ordered(vector.segments[2]) .|> (x) -> sum += x
+    sum / max(length(vector.segments[2]),1)
 end
 
 #### TO DO: INTEGRITY TEST/ASSERT
@@ -234,17 +250,6 @@ function balance!(vector::MedianVector)
             shift_right!(vector)
         end
     end
-end
-
-function pop!(vector::MedianVector,key)
-    for segment in vector.segments
-        if haskey(segment.arena,key)
-            pop!(segment,key)
-            balance!(vector)
-            return
-        end
-    end
-    throw(KeyError(key))
 end
 
 

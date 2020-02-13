@@ -1,5 +1,4 @@
 module RandomForest
-
 using Random
 
 export Forest,Feature
@@ -110,8 +109,8 @@ function trial_input()
     (1:100) |> Array |> (x) -> reshape(x,(50,2))
 end
 
-function random_trial_input()
-    collect(zip((1:1000),rand(1000)))
+function random_trial_input(n)
+    collect(zip((1:n),rand(n)))
 end
 
 end

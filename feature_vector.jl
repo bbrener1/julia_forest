@@ -329,6 +329,15 @@ function ssme(vector::MedianVector)
     return squared_sum - (2*md*sum) + (elements*(md^2))
 end
 
+function ordered_ssme!(vector::MedianVector,draw_order)
+    ssme_returns = zeros(size(draw_order)[1])
+    for (i,key) in enumerate(draw_order)
+        pop!(vector,key)
+        ssme_returns[i] = ssme(vector)
+    end
+    return ssme_returns
+end
+
 # This function updates the vector to make sure it maintains the correct position
 # of the median after an element is removed.
 function balance!(vector::MedianVector)
@@ -444,15 +453,9 @@ function RandomMedianTiming(kv)
     sorted = sort(kv,by=(x) -> x[1]);
     vec = MedianVector(kv);
     draw_order = Random.randperm(length(vec));
-    function test(vec,draw_order)
-        vec_copy = deepcopy(vec)
-        for i in draw_order
-            pop!(vec_copy,i)
-            ssme(vec_copy)
-        end
-    end
+
     # @time test(vec,draw_order)
-    @benchmark test($vec,$draw_order)
+    @benchmark (v = deepcopy($vec); ordered_ssme!(v,$draw_order))
 end
 
 

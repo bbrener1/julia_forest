@@ -5,13 +5,13 @@ using BenchmarkTools
 
 # Basic element of the linked list, contains a value and links
 
-mutable struct Element
-    key::Union{Any,Nothing}
-    value::Union{Any,Nothing}
-    squared_value::Union{Any,Nothing}
-    previous::Element
-    next::Element
-    function Element()::Element
+mutable struct Element{K,V}
+    key::Union{K,Nothing}
+    value::Union{V,Nothing}
+    squared_value::Union{V,Nothing}
+    previous::Element{K,V}
+    next::Element{K,V}
+    function Element{K,V}()::Element{K,V} where {K,V}
         e = new()
         e.value = nothing
         e.squared_value = nothing
@@ -20,19 +20,20 @@ mutable struct Element
     end
 end
 
-function Element(v)
-    e = Element()
-    e.value = v
-    e.squared_value = v^2
-    e.key = nothing
-end
+Base.show(io::IO,e::Element) = print(io,(e.key,e.value,e.previous.key,e.next.key))
+Base.show(io::IO,d::Dict{K,Element}) where {K} = (
+    for (k,e) in d
+        et = (e.key,e.value,e.previous.key,e.next.key)
+        print(io,"$k => $et")
+    end)
+
 
 # This creates two endcap elements that are linked to each other and have a closed loop link onto themselves
 # These should not be accessible to the user under normal operation, only internally
 
-function endcaps()::Tuple{Element,Element}
-    endcap_left = Element()
-    endcap_right = Element()
+function endcaps(K::DataType,V::DataType)::Tuple{Element{K,V},Element{K,V}}
+    endcap_left = Element{K,V}()
+    endcap_right = Element{K,V}()
     endcap_left.previous = endcap_left
     endcap_left.next = endcap_right
     endcap_right.next = endcap_right
@@ -40,8 +41,8 @@ function endcaps()::Tuple{Element,Element}
     (endcap_left,endcap_right)
 end
 
-function Element(k,v,p::Element,n::Element)::Element
-    e = Element()
+function Element(k::K,v::V,p::Element{K,V},n::Element{K,V})::Element{K,V} where {K,V}
+    e = Element{K,V}()
     e.key = k
     e.value = v
     e.squared_value = v^2
@@ -53,28 +54,30 @@ end
 # A segment is doubly-ended linked list resting in a Dict arena. Elements make up the list, and are also accessible by
 # indexing into the Dict.
 
-mutable struct Segment
-    arena::Dict{Any,Element}
-    sum::Any
-    squared_sum::Any
-    left::Element
-    right::Element
+mutable struct Segment{K,V}
+    arena::Dict{K,Element{K,V}}
+    sum::V
+    squared_sum::V
+    left::Element{K,V}
+    right::Element{K,V}
 end
+
+# Base.show(io::IO,s::Segment) = print(io,(e.key,e.value,e.previous.key,e.next.key))
 
 # A blank segment containing only the endcaps.
 
-function Segment()::Segment
-    (endcap_left,endcap_right) = endcaps()
-    Segment(Dict([]),0,0,endcap_left,endcap_right)
+function Segment{K,V}() where {K,V}
+    (endcap_left,endcap_right) = endcaps(K,V)
+    Segment{K,V}(Dict([]),0,0,endcap_left,endcap_right)
 end
 
 # Creates a linked list from sorted values, using integers as keys for the Dict
 
-function link_sorted(sorted)
+function link_sorted(sorted::Array{V}) where {V}
     if !issorted(sorted)
         throw(DomainError("unsorted values"))
     end
-    segment = Segment()
+    segment = Segment{Int,V}()
     for (index,element) in enumerate(sorted)
         push_right!(segment,index,element)
     end
@@ -84,8 +87,8 @@ end
 
 # Creates a Segment out of a sorted list of key-value pairs
 
-function Segment(kv)
-    segment = Segment()
+function Segment{K,V}(kv::AbstractArray{Tuple{K,V}}) where {K,V}
+    segment = Segment{K,V}()
     for (key,value) in kv
         push_right!(segment,key,value)
     end
@@ -176,7 +179,7 @@ function push_right!(segment::Segment,key,value)
 end
 
 # Reads the elements in a Segment in the order in which they are linked
-function read_ordered(segment::Segment)::Array
+function read_ordered(segment::Segment)
     element = segment.left
     output =
         (1:length(segment)) .|>
@@ -194,9 +197,9 @@ abstract type SegmentedVector end
 function pop!(vector::SegmentedVector,key)
     for segment in vector.segments
         if haskey(segment.arena,key)
-            pop!(segment,key)
+            e = pop!(segment,key)
             balance!(vector)
-            return
+            return e
         end
     end
     print(vector.segments .|> (s) -> s.arena)
@@ -207,8 +210,8 @@ function length(vector::SegmentedVector)
     vector.segments .|> length |> sum
 end
 
-mutable struct MedianVector <: SegmentedVector
-    segments::Tuple{Segment,Segment,Segment}
+mutable struct MedianVector{K,V} <: SegmentedVector where {K,V}
+    segments::Tuple{Segment{K,V},Segment{K,V},Segment{K,V}}
 end
 
 # A median vector maintains an awareness of the median of all elements that it contains,
@@ -224,15 +227,15 @@ end
 # Key/value constructor for the Median Vector. Basically just passes off the relevant key/value
 # pairs to Segments, as seen above
 
-function MedianVector(kv)
+function MedianVector(kv::AbstractArray{Tuple{K,V}})::MedianVector{K,V} where {K,V}
     sorted = sort(kv,by= (x) -> x[2])
     split_l = round(Int,((Base.length(sorted)+1)/2),RoundDown)
     split_r = round(Int,((Base.length(sorted)+1)/2),RoundUp)
     println(sorted)
     println(split_l,split_r)
-    seg_1 = Segment(sorted[1:(split_l-1)])
-    seg_2 = Segment(sorted[split_l:split_r])
-    seg_3 = Segment(sorted[split_r+1:end])
+    seg_1 = Segment{K,V}(sorted[1:(split_l-1)])
+    seg_2 = Segment{K,V}(sorted[split_l:split_r])
+    seg_3 = Segment{K,V}(sorted[split_r+1:end])
     println(read_ordered((seg_1)))
     println(read_ordered((seg_2)))
     println(read_ordered((seg_3)))
@@ -245,12 +248,12 @@ end
 
 # As above but skips the sorting step on input that is already sorted
 
-function mv_link_sorted(sorted)
+function mv_link_sorted(sorted::AbstractArray{Tuple{K,V}}) where {K,V}
     split_l = round(Int,((Base.length(sorted)+1)/2),RoundDown)
     split_r = round(Int,((Base.length(sorted)+1)/2),RoundUp)
-    seg_1 = Segment(sorted[1:(split_l-1)])
-    seg_2 = Segment(sorted[split_l:split_r])
-    seg_3 = Segment(sorted[split_r+1:end])
+    seg_1 = Segment{K,V}(sorted[1:(split_l-1)])
+    seg_2 = Segment{K,V}(sorted[split_l:split_r])
+    seg_3 = Segment{K,V}(sorted[split_r+1:end])
     mv = MedianVector(
         (seg_1,seg_2,seg_3),
     )
@@ -407,7 +410,7 @@ function slow_sme(vec)
 end
 
 
-function RandomMedianTest(kv)
+function random_median_test(kv)
     vec = MedianVector(kv)
     draw_order = Random.randperm(Base.length(kv))
 
@@ -442,20 +445,23 @@ function RandomMedianTest(kv)
     end
 end
 
-Base.show(io::IO,mv::MedianVector) = (_) -> ()
+# Base.show(io::IO,mv::MedianVector) = (_) -> ()
 
-function RandomMedianTiming(kv)
+function random_median_timing(kv)
     # This function tests the main task that vectors in this library will be used for:
 
     # Fast estimation of the descriptive statistics of a set of elements, recomputed online
     # as elements are removed from the collection in a random order.
 
-    sorted = sort(kv,by=(x) -> x[1]);
-    vec = MedianVector(kv);
+    sorted = sort(kv,by=(x) -> x[2]);
+    println(sorted)
+    # vec = MedianVector(sorted);
+    vec = mv_link_sorted(sorted)
+    println(vec)
     draw_order = Random.randperm(length(vec));
-
     # @time test(vec,draw_order)
-    @benchmark (v = deepcopy($vec); ordered_ssme!(v,$draw_order))
+    # @benchmark (v = deepcopy($vec); ordered_ssme!(v,$draw_order))
+    @benchmark pop!(v,i) setup((v=deepcopy($vec);println("New vec:$v");i=Random.rand(1:length(v))))
 end
 
 

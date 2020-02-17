@@ -3,6 +3,8 @@ module FeatureVector
 using Statistics,Random
 using BenchmarkTools
 
+import Random.rand
+
 # Basic element of the linked list, contains a value and links
 
 mutable struct Element{K,V}
@@ -20,11 +22,11 @@ mutable struct Element{K,V}
     end
 end
 
-Base.show(io::IO,e::Element) = print(io,(e.key,e.value,e.previous.key,e.next.key))
+Base.show(io::IO,e::Element) = begin es = (e.key,e.value,e.previous.key,e.next.key); println(io,"$es"); end
 Base.show(io::IO,d::Dict{K,Element}) where {K} = (
     for (k,e) in d
         et = (e.key,e.value,e.previous.key,e.next.key)
-        print(io,"$k => $et")
+        println(io,"\t$k => $et")
     end)
 
 
@@ -195,15 +197,19 @@ end
 abstract type SegmentedVector end
 
 function pop!(vector::SegmentedVector,key)
+    en::Union{Element,Nothing} = nothing
     for segment in vector.segments
         if haskey(segment.arena,key)
-            e = pop!(segment,key)
+            en = pop!(segment,key)
             balance!(vector)
-            return e
         end
     end
-    print(vector.segments .|> (s) -> s.arena)
-    throw(KeyError(key))
+    if en === nothing
+        print(vector.segments .|> (s) -> s.arena)
+        throw(KeyError(key))
+    else
+        return en
+    end
 end
 
 function length(vector::SegmentedVector)
@@ -437,7 +443,7 @@ function random_median_test(kv)
         if fs - ss > .00001
             println(i)
             println("SME ERROR")
-            print("$fs,$ss")
+            println("$fs,$ss")
             return vec_copy
             # error("$fs,$ss")
         end
@@ -457,11 +463,14 @@ function random_median_timing(kv)
     println(sorted)
     # vec = MedianVector(sorted);
     vec = mv_link_sorted(sorted)
-    println(vec)
+    # println(vec)
     draw_order = Random.randperm(length(vec));
     # @time test(vec,draw_order)
     # @benchmark (v = deepcopy($vec); ordered_ssme!(v,$draw_order))
-    @benchmark pop!(v,i) setup((v=deepcopy($vec);println("New vec:$v");i=Random.rand(1:length(v))))
+    @benchmark (ordered_ssme!(v,$draw_order)) evals=1 setup=(v = deepcopy($vec))
+    # @benchmark begin pop!(v,i) end setup(begin v=deepcopy($vec);i=rand(1:length(v));println("New vec:$v");println("Popping $i") end)
+    # @benchmark pop!(v,i) evals=1 setup(begin v=deepcopy($vec);i=rand(1:length(v));println("Popping $i") end)
+    # @benchmark pop!(v,i) setup(begin v=mv_link_sorted($sorted);i=rand(1:length(v));println("New vec:$v");println("Popping $i") end)
 end
 
 

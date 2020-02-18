@@ -2,25 +2,20 @@ module FeatureVector
 
 using Statistics,Random
 using BenchmarkTools
+using Setfield
 
 import Random.rand
 
 # Basic element of the linked list, contains a value and links
 
-mutable struct Element{K <: Int,V}
+struct Element{K,V}
     key::K
-    value::Union{V,Nothing}
-    squared_value::Union{V,Nothing}
+    value::V
+    squared_value::V
     previous::K
     next::K
-    function Element{K,V}()::Element{K,V} where {K,V}
-        e = new()
-        e.value = nothing
-        e.squared_value = nothing
-        e.key = 0
-        e
-    end
 end
+
 
 Base.show(io::IO,e::Element) = begin es = (e.key,e.value,e.previous,e.next); println(io,"$es"); end
 Base.show(io::IO,d::Dict{K,Element}) where {K} = (
@@ -34,25 +29,13 @@ Base.show(io::IO,d::Dict{K,Element}) where {K} = (
 # These should not be accessible to the user under normal operation, only internally
 
 function endcaps(K::DataType,V::DataType)::Tuple{Element{K,V},Element{K,V}}
-    endcap_left = Element{K,V}()
-    endcap_right = Element{K,V}()
-    endcap_left.previous = -2
-    endcap_left.next = -1
-    endcap_left.key = -2
-    endcap_right.next = -1
-    endcap_right.previous = -2
-    endcap_right.key = -1
+    endcap_left = Element(-2,zero(V),zero(V),-2,-1)
+    endcap_right = Element(-1,zero(V),zero(V),-2,-1)
     (endcap_left,endcap_right)
 end
 
 function Element(k::K,v::V,p::K,n::K)::Element{K,V} where {K <: Int,V}
-    e = Element{K,V}()
-    e.key = k
-    e.value = v
-    e.squared_value = v^2
-    e.previous = p
-    e.next = n
-    e
+    Element(k,v,v^2,p,n)
 end
 
 # A segment is doubly-ended linked list resting in a Dict arena. Elements make up the list, and are also accessible by
@@ -141,8 +124,10 @@ function pop!(segment::Segment,key)
     segment.squared_sum -= target.squared_value
     left_key = target.previous
     right_key = target.next
-    segment.arena[left_key].next = right_key
-    segment.arena[right_key].previous = left_key
+    left = segment.arena[left_key]
+    right = segment.arena[right_key]
+    segment.arena[left_key] = @set left.next = right_key
+    segment.arena[right_key]= @set right.previous = left_key
     target
 end
 
@@ -161,15 +146,16 @@ end
 
 # Pushes an element onto the right side of the list
 function push_left!(segment::Segment,element::Element)
-    left_key = -2
-    right_key = segment.arena[left_key].next
-    segment.arena[element.key] = element
-    segment.sum += element.value
-    segment.squared_sum += element.squared_value
-    element.previous = left_key
-    element.next = right_key
-    segment.arena[left_key].next = element.key
-    segment.arena[right_key].previous = element.key
+    lk = -2
+    rk = segment.arena[lk].next
+    new_element = Element(element.key,element.value,element.squared_value,lk,rk)
+    segment.arena[new_element.key] = new_element
+    segment.sum += new_element.value
+    segment.squared_sum += new_element.squared_value
+    left = segment.arena[lk]
+    right = segment.arena[rk]
+    segment.arena[lk] = @set left.next = new_element.key
+    segment.arena[rk] = @set right.previous = new_element.key
 end
 
 # Creates an element out of a key-value pair, then
@@ -177,41 +163,42 @@ end
 function push_left!(segment::Segment,key,value)
     lk = -2
     rk = segment.arena[lk].next
-    element = Element(key,value,lk,rk)
-    segment.arena[element.key] = element
-    segment.sum += element.value
-    segment.squared_sum += element.squared_value
-    element.previous = lk
-    element.next = rk
-    segment.arena[lk].next = element.key
-    segment.arena[rk].previous = element.key
+    new_element = Element(key,value,lk,rk)
+    segment.arena[new_element.key] = new_element
+    segment.sum += new_element.value
+    segment.squared_sum += new_element.squared_value
+    left = segment.arena[lk]
+    right = segment.arena[rk]
+    segment.arena[lk] = @set left.next = new_element.key
+    segment.arena[rk] = @set right.previous = new_element.key
 end
 
 # As above
 function push_right!(segment::Segment,element::Element)
     rk = -1
     lk = segment.arena[rk].previous
-    segment.arena[element.key] = element
-    segment.sum += element.value
-    segment.squared_sum += element.squared_value
-    element.previous = lk
-    element.next = rk
-    segment.arena[lk].next = element.key
-    segment.arena[rk].previous = element.key
+    new_element = Element(element.key,element.value,element.squared_value,lk,rk)
+    segment.arena[new_element.key] = new_element
+    segment.sum += new_element.value
+    segment.squared_sum += new_element.squared_value
+    left = segment.arena[lk]
+    right = segment.arena[rk]
+    segment.arena[lk] = @set left.next = new_element.key
+    segment.arena[rk] = @set right.previous = new_element.key
 end
 
 # As above
 function push_right!(segment::Segment,key,value)
     rk = -1
     lk = segment.arena[rk].previous
-    element = Element(key,value,lk,rk)
-    segment.arena[element.key] = element
-    segment.sum += element.value
-    segment.squared_sum += element.squared_value
-    element.previous = lk
-    element.next = rk
-    segment.arena[lk].next = element.key
-    segment.arena[rk].previous = element.key
+    new_element = Element(key,value,lk,rk)
+    segment.arena[new_element.key] = new_element
+    segment.sum += new_element.value
+    segment.squared_sum += new_element.squared_value
+    left = segment.arena[lk]
+    right = segment.arena[rk]
+    segment.arena[lk] = @set left.next = new_element.key
+    segment.arena[rk] = @set right.previous = new_element.key
 end
 
 # Reads the elements in a Segment in the order in which they are linked
@@ -502,7 +489,8 @@ function random_median_timing(kv)
     # println(vec)
     draw_order = Random.randperm(length(vec));
     # @time test(vec,draw_order)
-    # @benchmark (v = deepcopy($vec); ordered_ssme!(v,$draw_order))
+    # @benchmark (v = deepcopy($vec)) evals=1
+    # @benchmark (v = deepcopy($vec); ordered_ssme!(v,$draw_order)) evals=1
     @benchmark (ordered_ssme!(v,$draw_order)) evals=1 setup=(v = deepcopy($vec))
     # @benchmark begin pop!(v,i) end setup(begin v=deepcopy($vec);i=rand(1:length(v));println("New vec:$v");println("Popping $i") end)
     # @benchmark pop!(v,i) evals=1 setup(begin v=deepcopy($vec);i=rand(1:length(v));println("Popping $i") end)
